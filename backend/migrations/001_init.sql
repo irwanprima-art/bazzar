@@ -205,7 +205,8 @@ CREATE INDEX idx_skus_barcode ON skus(barcode);
 -- ============================================
 -- Default admin user (password: admin123)
 INSERT INTO users (username, password_hash, full_name, role) VALUES
-    ('admin', '$2a$10$placeholder_will_be_set_by_app', 'Administrator', 'admin');
+    ('admin', '$2a$10$mzcJN9DWrF1RvP8rrkbww.aMb5sLtYbWzdX431I19tNxrQarZySO6', 'Administrator', 'admin')
+ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 -- Default event
 INSERT INTO events (name, description, start_date, end_date) VALUES
