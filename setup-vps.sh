@@ -10,6 +10,7 @@ set -e
 
 DOMAIN="bazzar.souluze.com"
 APP_DIR="/opt/bazzar"
+APP_PORT="8090"
 
 echo "🚀 Bazzar Makuku VPS Setup Starting..."
 echo "🌐 Domain: ${DOMAIN}"
@@ -74,7 +75,7 @@ if [ ! -f "$APP_DIR/.env" ]; then
     DB_PASS=$(openssl rand -base64 16 | tr -d '=+/')
     JWT_SECRET=$(openssl rand -base64 32 | tr -d '=+/')
     cat > $APP_DIR/.env << EOF
-PORT=8080
+PORT=${APP_PORT}
 DB_HOST=db
 DB_PORT=5432
 DB_USER=postgres
@@ -113,7 +114,7 @@ services:
   app:
     build: .
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${APP_PORT}:${APP_PORT}"
     env_file: .env
     depends_on:
       db:
@@ -140,7 +141,7 @@ server {
     client_max_body_size 50M;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -172,7 +173,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 echo "⏳ Waiting for app to be ready..."
 for i in {1..30}; do
-    if curl -sf http://127.0.0.1:8080/api/health > /dev/null 2>&1; then
+    if curl -sf http://127.0.0.1:${APP_PORT}/api/health > /dev/null 2>&1; then
         echo "✅ App is running!"
         break
     fi
