@@ -26,13 +26,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Check existing session
+  // Check existing session (silently clear if stale)
   if (Auth.isLoggedIn()) {
     try {
       const user = await Auth.getMe();
       showMainApp(user);
     } catch(e) {
-      Auth.logout();
+      // Silently clear stale token, don't show error
+      API.clearToken();
+      Auth.user = null;
     }
   }
 

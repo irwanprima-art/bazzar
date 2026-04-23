@@ -642,12 +642,25 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 /* ── Credit ── */
 .login-credit {
   text-align: center;
-  margin-top: 2rem;
-  font-size: 0.75rem;
+  margin-top: 2.5rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
+  opacity: 0.5;
+  letter-spacing: 0.5px;
+}
+.login-credit a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: var(--transition);
+}
+.login-credit a:hover {
+  color: var(--accent-light);
+  opacity: 1;
 }
 .nav-footer {
   padding: 1rem 0.75rem;
   margin-top: auto;
   text-align: center;
+  opacity: 0.4;
 }
+.nav-footer:hover { opacity: 0.7; }
