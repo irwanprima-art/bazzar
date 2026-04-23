@@ -16,7 +16,7 @@ const API = {
     if (body) opts.body = isFormData ? body : JSON.stringify(body);
 
     const res = await fetch(this.baseURL + path, opts);
-    if (res.status === 401) {
+    if (res.status === 401 && !path.includes('/auth/login')) {
       this.clearToken();
       window.Auth?.logout();
       throw new Error('Session expired');

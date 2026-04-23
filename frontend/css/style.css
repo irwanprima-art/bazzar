@@ -638,3 +638,16 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   .toolbar { flex-direction: column; }
   .toolbar-search { min-width: 100%; }
 }
+
+/* ── Credit ── */
+.login-credit {
+  text-align: center;
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.nav-footer {
+  padding: 1rem 0.75rem;
+  margin-top: auto;
+  text-align: center;
+}
