@@ -162,9 +162,9 @@ func (u *InboundUsecase) CreateManual(ctx context.Context, req domain.CreateInbo
 }
 
 func (u *InboundUsecase) ScanItem(ctx context.Context, inboundID uuid.UUID, req domain.InboundScanRequest, eventID, userID uuid.UUID) (*domain.InboundScanResult, error) {
-	sku, err := u.skuRepo.GetByBarcode(ctx, req.Barcode)
+	sku, err := u.skuRepo.GetByBarcodeOrSKUCode(ctx, req.Barcode)
 	if err != nil {
-		return nil, fmt.Errorf("unknown barcode: %s", req.Barcode)
+		return nil, fmt.Errorf("SKU/barcode tidak ditemukan: %s", req.Barcode)
 	}
 
 	items, err := u.repo.GetItems(ctx, inboundID)

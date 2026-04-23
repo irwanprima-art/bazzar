@@ -56,10 +56,10 @@ func (u *PickingUsecase) ScanItem(ctx context.Context, orderID uuid.UUID, req do
 		return nil, fmt.Errorf("order is not in picking state (current: %s)", order.Status)
 	}
 
-	// Find SKU by barcode
-	sku, err := u.skuRepo.GetByBarcode(ctx, req.Barcode)
+	// Find SKU by barcode or SKU code
+	sku, err := u.skuRepo.GetByBarcodeOrSKUCode(ctx, req.Barcode)
 	if err != nil {
-		return nil, fmt.Errorf("unknown barcode: %s", req.Barcode)
+		return nil, fmt.Errorf("SKU/barcode tidak ditemukan: %s", req.Barcode)
 	}
 
 	// Find matching order item

@@ -26,8 +26,8 @@ func (h *InventoryHandler) RegisterRoutes(app *fiber.App, authMw *middleware.Aut
 	inv.Get("/logs", h.GetLogs)
 	inv.Get("/sales-report", h.GetSalesReport)
 	inv.Post("/adjust", authMw.AdminOnly(), h.Adjust)
-	inv.Post("/replenish", authMw.AdminOnly(), h.Replenish)
-	inv.Post("/transfer", authMw.AdminOnly(), h.Transfer)
+	inv.Post("/replenish", h.Replenish)
+	inv.Post("/transfer", h.Transfer)
 }
 
 func (h *InventoryHandler) List(c *fiber.Ctx) error {

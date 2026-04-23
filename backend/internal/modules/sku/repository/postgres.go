@@ -78,6 +78,21 @@ func (r *SKURepository) GetByBarcode(ctx context.Context, barcode string) (*doma
 	return &sku, nil
 }
 
+// GetByBarcodeOrSKUCode tries barcode first, then falls back to sku_code
+func (r *SKURepository) GetByBarcodeOrSKUCode(ctx context.Context, input string) (*domain.SKU, error) {
+	var sku domain.SKU
+	err := r.db.QueryRow(ctx, `
+		SELECT id, sku_code, barcode, name, COALESCE(description,''), replenish_limit, created_at, updated_at
+		FROM skus WHERE barcode = $1 OR sku_code = $1
+		LIMIT 1
+	`, input).Scan(&sku.ID, &sku.SKUCode, &sku.Barcode, &sku.Name, &sku.Description,
+		&sku.ReplenishLimit, &sku.CreatedAt, &sku.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &sku, nil
+}
+
 func (r *SKURepository) List(ctx context.Context, search string, page, pageSize int) ([]domain.SKU, int64, error) {
 	offset := (page - 1) * pageSize
 

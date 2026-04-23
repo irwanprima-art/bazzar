@@ -7,8 +7,8 @@ Router.register('inventory', async () => {
         <option value="EVENT">Event Floor</option>
         <option value="STORAGE">Storage</option>
       </select>
+      <button class="btn btn-primary" onclick="showTransferModal()"><span class="material-symbols-rounded">sync_alt</span> Transfer</button>
       ${Auth.isAdmin() ? `
-        <button class="btn btn-primary" onclick="showTransferModal()"><span class="material-symbols-rounded">sync_alt</span> Transfer</button>
         <button class="btn btn-secondary" onclick="loadReplenishAlerts()"><span class="material-symbols-rounded">notification_important</span> Alerts</button>
       ` : ''}
       <button class="btn btn-secondary" onclick="loadSalesReport()"><span class="material-symbols-rounded">assessment</span> Sales Report</button>
@@ -32,7 +32,7 @@ async function loadInventory() {
       { label: 'On Hand', render: r => `<strong>${r.qty_onhand}</strong>` },
       { label: 'Allocated', render: r => `<span style="color:var(--warning)">${r.qty_allocated}</span>` },
       { label: 'Available', render: r => `<strong style="color:${r.available <= 0 ? 'var(--danger)' : 'var(--success)'}">${r.available}</strong>` },
-      { label: '', render: r => Auth.isAdmin() ? `<button class="btn btn-sm btn-primary" onclick="quickReplenish('${r.sku_id}','${r.sku_code}','${r.sku_name || ''}')">↗ Replenish</button>` : '' },
+      { label: '', render: r => `<button class="btn btn-sm btn-primary" onclick="quickReplenish('${r.sku_id}','${r.sku_code}','${r.sku_name || ''}')">🔄 Transfer</button>` },
     ], res.data || [], 'No inventory data');
   } catch(e) { document.getElementById('inventory-table').innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
 }
