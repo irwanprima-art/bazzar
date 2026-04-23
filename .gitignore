@@ -1,0 +1,45 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bazzar
+backend/bazzar.exe
+
+# Environment
+.env
+.env.*
+
+# Go
+backend/vendor/
+backend/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data files - don't push sensitive order data
+Order.all.*.xlsx
+*.xlsx
+
+# Docker volumes
+pgdata/
+
+# Build outputs
+dist/
+build/
+
+# Logs
+*.log
+
+# PWA cache
+frontend/sw-cache/

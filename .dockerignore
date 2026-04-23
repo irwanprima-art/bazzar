@@ -1,0 +1,7 @@
+.env
+*.exe
+*.log
+node_modules/
+__pycache__/
+.git/
+Order.all.*.xlsx
