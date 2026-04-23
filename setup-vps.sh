@@ -1,14 +1,19 @@
 #!/bin/bash
 # ============================================
 # Bazzar Makuku - VPS Auto Setup Script
+# Domain: bazzar.souluze.com
 # Run as root on Ubuntu 22.04/24.04
-# Usage: curl -sSL <url> | bash
-# Or:    chmod +x setup-vps.sh && ./setup-vps.sh
+# Usage: chmod +x setup-vps.sh && ./setup-vps.sh
 # ============================================
 
 set -e
 
+DOMAIN="bazzar.souluze.com"
+APP_DIR="/opt/bazzar"
+
 echo "🚀 Bazzar Makuku VPS Setup Starting..."
+echo "🌐 Domain: ${DOMAIN}"
+echo ""
 
 # ── 1. Install Docker if not present ──
 if ! command -v docker &> /dev/null; then
@@ -28,7 +33,7 @@ else
     echo "✅ Docker already installed"
 fi
 
-# ── 2. Install Nginx if not present ──
+# ── 2. Install Nginx + Certbot ──
 if ! command -v nginx &> /dev/null; then
     echo "📦 Installing Nginx..."
     apt-get install -y -qq nginx
@@ -38,8 +43,22 @@ else
     echo "✅ Nginx already installed"
 fi
 
-# ── 3. Clone / Pull repo ──
-APP_DIR="/opt/bazzar"
+if ! command -v certbot &> /dev/null; then
+    echo "📦 Installing Certbot for SSL..."
+    apt-get install -y -qq certbot python3-certbot-nginx
+    echo "✅ Certbot installed"
+else
+    echo "✅ Certbot already installed"
+fi
+
+# ── 3. Open firewall ports ──
+if command -v ufw &> /dev/null; then
+    ufw allow 80/tcp >/dev/null 2>&1 || true
+    ufw allow 443/tcp >/dev/null 2>&1 || true
+    echo "✅ Firewall ports 80/443 opened"
+fi
+
+# ── 4. Clone / Pull repo ──
 if [ -d "$APP_DIR" ]; then
     echo "📥 Pulling latest code..."
     cd $APP_DIR
@@ -50,36 +69,32 @@ else
     cd $APP_DIR
 fi
 
-# ── 4. Create .env file ──
+# ── 5. Create .env file ──
 if [ ! -f "$APP_DIR/.env" ]; then
-    JWT_SECRET=$(openssl rand -base64 32)
+    DB_PASS=$(openssl rand -base64 16 | tr -d '=+/')
+    JWT_SECRET=$(openssl rand -base64 32 | tr -d '=+/')
     cat > $APP_DIR/.env << EOF
-# Bazzar Makuku Environment
 PORT=8080
 DB_HOST=db
 DB_PORT=5432
 DB_USER=postgres
-DB_PASSWORD=$(openssl rand -base64 16)
+DB_PASSWORD=${DB_PASS}
 DB_NAME=bazzar
 JWT_SECRET=${JWT_SECRET}
 EOF
-    echo "✅ .env created with random secrets"
+    echo "✅ .env created with secure random secrets"
 else
-    echo "✅ .env already exists"
+    echo "✅ .env already exists, keeping current values"
 fi
 
-# Source env for docker-compose
-set -a
-source $APP_DIR/.env
-set +a
-
-# ── 5. Update docker-compose with env vars ──
+# ── 6. Create production docker-compose ──
 cat > $APP_DIR/docker-compose.prod.yml << 'COMPOSE'
 version: '3.8'
 
 services:
   db:
     image: postgres:16-alpine
+    env_file: .env
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -87,7 +102,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -114,17 +129,13 @@ networks:
   bazzar-net:
     driver: bridge
 COMPOSE
-
 echo "✅ docker-compose.prod.yml created"
 
-# ── 6. Configure Nginx ──
-# Detect server IP
-SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-
+# ── 7. Configure Nginx for domain ──
 cat > /etc/nginx/sites-available/bazzar << NGINX
 server {
     listen 80;
-    server_name ${SERVER_IP} _;
+    server_name ${DOMAIN};
 
     client_max_body_size 50M;
 
@@ -138,51 +149,72 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 }
 NGINX
 
-# Enable site
 ln -sf /etc/nginx/sites-available/bazzar /etc/nginx/sites-enabled/bazzar
 rm -f /etc/nginx/sites-enabled/default
 
-# Test and restart nginx
 nginx -t && systemctl restart nginx
-echo "✅ Nginx configured for $SERVER_IP"
+echo "✅ Nginx configured for ${DOMAIN}"
 
-# ── 7. Build and start ──
-echo "🔨 Building Docker images..."
+# ── 8. Build and start ──
+echo ""
+echo "🔨 Building Docker images (this may take a few minutes)..."
 cd $APP_DIR
-docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml build --no-cache
 
 echo "🚀 Starting services..."
 docker compose -f docker-compose.prod.yml up -d
 
-# Wait for app to be ready
-echo "⏳ Waiting for app to start..."
-sleep 10
+echo "⏳ Waiting for app to be ready..."
+for i in {1..30}; do
+    if curl -sf http://127.0.0.1:8080/api/health > /dev/null 2>&1; then
+        echo "✅ App is running!"
+        break
+    fi
+    sleep 2
+done
 
-# Health check
-if curl -s http://127.0.0.1:8080/api/health | grep -q '"ok"'; then
+# ── 9. Setup SSL with Let's Encrypt ──
+echo ""
+echo "🔒 Setting up SSL certificate for ${DOMAIN}..."
+echo "   (Make sure DNS A record for ${DOMAIN} points to this server)"
+echo ""
+
+certbot --nginx -d ${DOMAIN} --non-interactive --agree-tos --email admin@souluze.com --redirect || {
     echo ""
-    echo "============================================"
-    echo "✅ BAZZAR MAKUKU IS LIVE!"
-    echo "============================================"
+    echo "⚠️  SSL setup failed. This usually means:"
+    echo "    1. DNS for ${DOMAIN} is not pointing to this server yet"
+    echo "    2. Port 80 is blocked by firewall"
     echo ""
-    echo "🌐 Access: http://${SERVER_IP}"
-    echo "🔑 Default login: admin / admin123"
+    echo "    Fix DNS first, then run manually:"
+    echo "    certbot --nginx -d ${DOMAIN}"
     echo ""
-    echo "📋 Useful commands:"
-    echo "   Logs:    docker compose -f /opt/bazzar/docker-compose.prod.yml logs -f"
-    echo "   Restart: docker compose -f /opt/bazzar/docker-compose.prod.yml restart"
-    echo "   Update:  cd /opt/bazzar && git pull && docker compose -f docker-compose.prod.yml up -d --build"
-    echo ""
-    echo "🔒 To add SSL with your domain:"
-    echo "   1. Point your domain DNS to ${SERVER_IP}"
-    echo "   2. apt install certbot python3-certbot-nginx"
-    echo "   3. certbot --nginx -d yourdomain.com"
-    echo "============================================"
-else
-    echo "⚠️ App may still be starting. Check logs:"
-    echo "   docker compose -f /opt/bazzar/docker-compose.prod.yml logs -f"
+}
+
+# ── 10. Setup auto-renewal cron ──
+if ! crontab -l 2>/dev/null | grep -q certbot; then
+    (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --post-hook 'systemctl reload nginx'") | crontab -
+    echo "✅ SSL auto-renewal cron configured"
 fi
+
+# ── Done ──
+echo ""
+echo "============================================"
+echo "✅ BAZZAR MAKUKU DEPLOYMENT COMPLETE!"
+echo "============================================"
+echo ""
+echo "🌐 URL:   https://${DOMAIN}"
+echo "🔑 Login: admin / admin123"
+echo ""
+echo "📋 Useful commands:"
+echo "   Logs:     cd /opt/bazzar && docker compose -f docker-compose.prod.yml logs -f"
+echo "   Restart:  cd /opt/bazzar && docker compose -f docker-compose.prod.yml restart"
+echo "   Update:   cd /opt/bazzar && git pull && docker compose -f docker-compose.prod.yml up -d --build"
+echo "   SSL fix:  certbot --nginx -d ${DOMAIN}"
+echo "   DB shell: docker compose -f /opt/bazzar/docker-compose.prod.yml exec db psql -U postgres bazzar"
+echo "============================================"
