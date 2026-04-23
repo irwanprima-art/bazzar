@@ -120,8 +120,17 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok", "service": "bazzar-makuku"})
 	})
 
-	// Serve frontend
-	app.Static("/", "../frontend")
+	// Serve frontend - detect path
+	frontendPath := "./frontend"
+	if _, err := os.Stat(frontendPath); os.IsNotExist(err) {
+		frontendPath = "../frontend"
+	}
+	app.Static("/", frontendPath)
+
+	// SPA fallback: serve index.html for non-API, non-file routes
+	app.Get("/*", func(c *fiber.Ctx) error {
+		return c.SendFile(filepath.Join(frontendPath, "index.html"))
+	})
 
 	port := cfg.Port
 	log.Printf("🚀 Bazzar Makuku server starting on port %s", port)
