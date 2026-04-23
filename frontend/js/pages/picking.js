@@ -47,8 +47,13 @@ async function startPickOrder(orderId) {
         Picking order <strong>#${order.order_number}</strong> - ${order.buyer_name || ''}
       </div>
       <div class="scan-container">
-        <label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;display:block">Scan Barcode</label>
-        <input type="text" class="scan-input" id="pick-scan-input" placeholder="Scan..." autofocus>
+        <label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;display:block">Scan Barcode / SKU Code</label>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <input type="text" class="scan-input" id="pick-scan-input" placeholder="Scan atau ketik SKU..." autofocus style="flex:1">
+          <button class="scan-with-camera-btn" onclick="openPickCamera('${orderId}')" title="Scan pakai Kamera">
+            <span class="material-symbols-rounded">photo_camera</span> Kamera
+          </button>
+        </div>
         <div id="pick-scan-feedback" style="margin-top:0.75rem;font-size:0.9rem"></div>
       </div>
       <div class="card">
@@ -68,31 +73,41 @@ async function startPickOrder(orderId) {
       if (e.key === 'Enter' && scanInput.value.trim()) {
         const barcode = scanInput.value.trim();
         scanInput.value = '';
-        try {
-          const res = await API.post(`/picking/${orderId}/scan`, { barcode, qty: 1 });
-          const r = res.data;
-          const fb = document.getElementById('pick-scan-feedback');
-          if (r.message === 'OK') {
-            Sound.success();
-            fb.innerHTML = `<span style="color:var(--success)">✓ ${r.sku_code} - ${r.sku_name} (${r.qty_picked}/${r.qty_ordered})</span>`;
-            // Update table
-            const cell = document.querySelector(`.pick-qty[data-id="${r.item_id}"]`);
-            if (cell) cell.textContent = r.qty_picked;
-          } else if (r.message && r.message.includes('sudah cukup')) {
-            Sound.warning();
-            fb.innerHTML = `<span style="color:var(--warning)">⚠ ${r.message}</span>`;
-          } else {
-            Sound.error();
-            fb.innerHTML = `<span style="color:var(--danger)">⚠ ${r.message}</span>`;
-          }
-        } catch(err) {
-          Sound.error();
-          document.getElementById('pick-scan-feedback').innerHTML = `<span style="color:var(--danger)">✗ ${err.message}</span>`;
-        }
+        await processPickScan(orderId, barcode);
         scanInput.focus();
       }
     });
   } catch(e) { Toast.error(e.message); }
+}
+
+async function processPickScan(orderId, barcode) {
+  const fb = document.getElementById('pick-scan-feedback');
+  try {
+    const res = await API.post(`/picking/${orderId}/scan`, { barcode, qty: 1 });
+    const r = res.data;
+    if (r.message === 'OK') {
+      Sound.success();
+      fb.innerHTML = `<span style="color:var(--success)">✓ ${r.sku_code} - ${r.sku_name} (${r.qty_picked}/${r.qty_ordered})</span>`;
+      const cell = document.querySelector(`.pick-qty[data-id="${r.item_id}"]`);
+      if (cell) cell.textContent = r.qty_picked;
+    } else if (r.message && r.message.includes('Cannot exceed')) {
+      Sound.warning();
+      fb.innerHTML = `<span style="color:var(--warning)">⚠ ${r.message}</span>`;
+    } else {
+      Sound.error();
+      fb.innerHTML = `<span style="color:var(--danger)">⚠ ${r.message}</span>`;
+    }
+  } catch(err) {
+    Sound.error();
+    fb.innerHTML = `<span style="color:var(--danger)">✗ ${err.message}</span>`;
+  }
+}
+
+function openPickCamera(orderId) {
+  CameraScanner.open((decodedText) => {
+    processPickScan(orderId, decodedText);
+    document.getElementById('pick-scan-input')?.focus();
+  });
 }
 
 async function completePicking(orderId) {

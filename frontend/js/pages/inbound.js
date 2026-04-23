@@ -84,8 +84,13 @@ async function openInbound(inboundId) {
     active.innerHTML = `
       <div class="alert alert-info"><span class="material-symbols-rounded">info</span> Receiving PO: <strong>${po.reference_number}</strong> - ${statusBadge(po.status)}</div>
       <div class="scan-container">
-        <label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;display:block">📦 Scan Barcode to Receive</label>
-        <input type="text" class="scan-input" id="inbound-scan" placeholder="Scan barcode..." autofocus>
+        <label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;display:block">📦 Scan Barcode / SKU Code to Receive</label>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <input type="text" class="scan-input" id="inbound-scan" placeholder="Scan atau ketik SKU..." autofocus style="flex:1">
+          <button class="scan-with-camera-btn" onclick="openInboundCamera()" title="Scan pakai Kamera">
+            <span class="material-symbols-rounded">photo_camera</span> Kamera
+          </button>
+        </div>
         <div id="inbound-scan-fb" style="margin-top:0.75rem;font-size:0.9rem"></div>
       </div>
       <div class="card" style="margin-top:1rem">
@@ -251,6 +256,14 @@ async function viewInbound(id) {
       <div style="margin-bottom:1rem">${statusBadge(po.status)}</div>
       <table style="width:100%;font-size:0.85rem"><thead><tr><th>SKU</th><th>Name</th><th>Expected</th><th>Received</th></tr></thead><tbody>${items}</tbody></table>`);
   } catch(e) { Toast.error(e.message); }
+}
+
+
+function openInboundCamera() {
+  CameraScanner.open((decodedText) => {
+    handleInboundScan(decodedText);
+    document.getElementById('inbound-scan')?.focus();
+  });
 }
 
 function closeInbound() {

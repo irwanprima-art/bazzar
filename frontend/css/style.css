@@ -664,3 +664,47 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   opacity: 0.4;
 }
 .nav-footer:hover { opacity: 0.7; }
+
+/* Camera Scanner */
+#camera-scanner-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+.camera-scanner-modal {
+  background: var(--bg-card);
+  border-radius: 1rem;
+  overflow: hidden;
+  width: 90vw; max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.camera-scanner-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  font-weight: 600; font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.camera-scanner-header .btn { margin-left: auto; }
+#camera-scanner-reader {
+  width: 100%; min-height: 260px;
+  background: #000;
+}
+#camera-scanner-reader video { width: 100% !important; border-radius: 0 !important; }
+.camera-scanner-footer {
+  padding: 0.75rem 1rem;
+  text-align: center;
+  background: var(--bg-secondary);
+}
+.scan-with-camera-btn {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--accent);
+  color: #fff;
+  border: none; border-radius: 0.5rem;
+  cursor: pointer; font-size: 0.8rem; font-weight: 600;
+  transition: all 0.2s;
+}
+.scan-with-camera-btn:hover { background: var(--accent-light); transform: scale(1.03); }
+.scan-with-camera-btn .material-symbols-rounded { font-size: 1rem; }
