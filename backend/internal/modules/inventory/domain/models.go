@@ -57,6 +57,14 @@ type ReplenishRequest struct {
 	Notes   string    `json:"notes"`
 }
 
+type TransferRequest struct {
+	EventID   uuid.UUID `json:"event_id"`
+	SKUID     uuid.UUID `json:"sku_id"`
+	Qty       int       `json:"qty"`
+	Direction string    `json:"direction"` // "storage_to_event" or "event_to_storage"
+	Notes     string    `json:"notes"`
+}
+
 type ReplenishAlert struct {
 	SKUID            uuid.UUID `json:"sku_id"`
 	SKUCode          string    `json:"sku_code"`

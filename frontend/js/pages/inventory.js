@@ -8,7 +8,7 @@ Router.register('inventory', async () => {
         <option value="STORAGE">Storage</option>
       </select>
       ${Auth.isAdmin() ? `
-        <button class="btn btn-primary" onclick="showReplenishModal()"><span class="material-symbols-rounded">sync_alt</span> Replenish</button>
+        <button class="btn btn-primary" onclick="showTransferModal()"><span class="material-symbols-rounded">sync_alt</span> Transfer</button>
         <button class="btn btn-secondary" onclick="loadReplenishAlerts()"><span class="material-symbols-rounded">notification_important</span> Alerts</button>
       ` : ''}
       <button class="btn btn-secondary" onclick="loadSalesReport()"><span class="material-symbols-rounded">assessment</span> Sales Report</button>
@@ -37,105 +37,134 @@ async function loadInventory() {
   } catch(e) { document.getElementById('inventory-table').innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
 }
 
-async function showReplenishModal() {
-  // Load SKU list from inventory (storage side)
-  let skus = [];
+async function showTransferModal() {
+  // Load both inventories
+  let allSkus = [];
   try {
-    const res = await API.get(`/inventory?event_id=${window.currentEventId}&location=STORAGE`);
-    skus = res.data || [];
+    const res = await API.get(`/inventory?event_id=${window.currentEventId}`);
+    allSkus = res.data || [];
   } catch(e) {}
 
-  const skuOptions = skus.map(s => `<option value="${s.sku_id}" data-code="${s.sku_code}" data-stock="${s.qty_onhand}">${s.sku_code} - ${s.sku_name || ''} (stok: ${s.qty_onhand})</option>`).join('');
+  const skuMap = {};
+  allSkus.forEach(s => {
+    if (!skuMap[s.sku_id]) skuMap[s.sku_id] = { sku_id: s.sku_id, sku_code: s.sku_code, sku_name: s.sku_name, storage: 0, event: 0 };
+    if (s.location_code === 'STORAGE') skuMap[s.sku_id].storage = s.qty_onhand;
+    if (s.location_code === 'EVENT') skuMap[s.sku_id].event = s.qty_onhand;
+  });
 
-  Modal.show('🔄 Replenish Stock (Storage → Event)', `
-    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem">Transfer stok dari Storage ke Event Floor</p>
+  const skuList = Object.values(skuMap);
+  const skuOptions = skuList.map(s => `<option value="${s.sku_id}" data-storage="${s.storage}" data-event="${s.event}">${s.sku_code} - ${s.sku_name || ''}</option>`).join('');
+
+  Modal.show('🔄 Transfer Stock', `
+    <div class="form-group">
+      <label class="form-label">Direction</label>
+      <select class="form-select" id="transfer-direction" onchange="updateTransferInfo()">
+        <option value="storage_to_event">Storage → Event Floor</option>
+        <option value="event_to_storage">Event Floor → Storage</option>
+      </select>
+    </div>
     <div class="form-group">
       <label class="form-label">SKU</label>
-      <select class="form-select" id="replenish-sku">
+      <select class="form-select" id="transfer-sku" onchange="updateTransferInfo()">
         <option value="">Pilih SKU...</option>
         ${skuOptions}
       </select>
     </div>
     <div class="form-group">
       <label class="form-label">Qty Transfer</label>
-      <input type="number" class="form-input" id="replenish-qty" min="1" value="1" style="text-align:center">
+      <input type="number" class="form-input" id="transfer-qty" min="1" value="1" style="text-align:center">
     </div>
     <div class="form-group">
       <label class="form-label">Notes (optional)</label>
-      <input type="text" class="form-input" id="replenish-notes" placeholder="e.g. Refill event floor">
+      <input type="text" class="form-input" id="transfer-notes" placeholder="e.g. Refill event floor">
     </div>
-    <div id="replenish-info" style="margin-top:0.5rem"></div>`,
+    <div id="transfer-info" style="margin-top:0.5rem"></div>`,
     `<button class="btn btn-secondary" onclick="Modal.hide()">Cancel</button>
-     <button class="btn btn-primary" onclick="doReplenish()">Transfer</button>`);
+     <button class="btn btn-primary" onclick="doTransfer()">Transfer</button>`);
+}
 
-  // Show storage info when SKU selected
-  document.getElementById('replenish-sku')?.addEventListener('change', function() {
-    const opt = this.selectedOptions[0];
-    const stock = opt?.dataset?.stock || 0;
-    const info = document.getElementById('replenish-info');
-    if (this.value) {
-      info.innerHTML = `<div class="alert alert-info"><span class="material-symbols-rounded">info</span> Stok di Storage: <strong>${stock}</strong></div>`;
-    } else {
-      info.innerHTML = '';
-    }
-  });
+function updateTransferInfo() {
+  const skuSelect = document.getElementById('transfer-sku');
+  const dir = document.getElementById('transfer-direction').value;
+  const opt = skuSelect?.selectedOptions[0];
+  const info = document.getElementById('transfer-info');
+
+  if (!opt || !skuSelect.value) { info.innerHTML = ''; return; }
+
+  const storage = opt.dataset.storage || 0;
+  const event = opt.dataset.event || 0;
+  const fromLabel = dir === 'storage_to_event' ? 'Storage' : 'Event';
+  const fromStock = dir === 'storage_to_event' ? storage : event;
+
+  info.innerHTML = `<div class="alert alert-info"><span class="material-symbols-rounded">info</span> Stok ${fromLabel}: <strong>${fromStock}</strong> | Storage: ${storage} | Event: ${event}</div>`;
 }
 
 function quickReplenish(skuId, skuCode, skuName) {
-  Modal.show(`↗ Replenish: ${skuCode}`, `
+  Modal.show(`🔄 Transfer: ${skuCode}`, `
     <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem">${skuName}</p>
     <div class="form-group">
-      <label class="form-label">Qty Transfer (Storage → Event)</label>
-      <input type="number" class="form-input" id="replenish-qty" min="1" value="1" style="text-align:center;font-size:1.2rem;font-weight:700" autofocus>
+      <label class="form-label">Direction</label>
+      <select class="form-select" id="transfer-direction">
+        <option value="storage_to_event">Storage → Event Floor</option>
+        <option value="event_to_storage">Event Floor → Storage</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Qty Transfer</label>
+      <input type="number" class="form-input" id="transfer-qty" min="1" value="1" style="text-align:center;font-size:1.2rem;font-weight:700" autofocus>
     </div>
     <div class="form-group">
       <label class="form-label">Notes</label>
-      <input type="text" class="form-input" id="replenish-notes" placeholder="e.g. Refill event floor">
+      <input type="text" class="form-input" id="transfer-notes" placeholder="e.g. Refill event floor">
     </div>
-    <input type="hidden" id="replenish-sku-id" value="${skuId}">`,
+    <input type="hidden" id="transfer-sku-id" value="${skuId}">`,
     `<button class="btn btn-secondary" onclick="Modal.hide()">Cancel</button>
-     <button class="btn btn-primary" onclick="doQuickReplenish()">Transfer</button>`);
+     <button class="btn btn-primary" onclick="doQuickTransfer()">Transfer</button>`);
 
-  setTimeout(() => document.getElementById('replenish-qty')?.focus(), 100);
+  setTimeout(() => document.getElementById('transfer-qty')?.focus(), 100);
 }
 
-async function doReplenish() {
-  const skuId = document.getElementById('replenish-sku').value;
-  const qty = parseInt(document.getElementById('replenish-qty').value) || 0;
-  const notes = document.getElementById('replenish-notes').value;
+async function doTransfer() {
+  const skuId = document.getElementById('transfer-sku').value;
+  const qty = parseInt(document.getElementById('transfer-qty').value) || 0;
+  const direction = document.getElementById('transfer-direction').value;
+  const notes = document.getElementById('transfer-notes').value;
 
   if (!skuId) { Toast.error('Pilih SKU dulu'); return; }
   if (qty <= 0) { Toast.error('Qty harus > 0'); return; }
 
   try {
-    await API.post('/inventory/replenish', {
+    const res = await API.post('/inventory/transfer', {
       event_id: window.currentEventId,
       sku_id: skuId,
       qty: qty,
-      notes: notes || 'Manual replenish'
+      direction: direction,
+      notes: notes || 'Manual transfer'
     });
     Modal.hide();
-    Toast.success(`Berhasil transfer ${qty} unit ke Event Floor`);
+    Toast.success(res.message || `Berhasil transfer ${qty} unit`);
     loadInventory();
   } catch(e) { Toast.error(e.message); }
 }
 
-async function doQuickReplenish() {
-  const skuId = document.getElementById('replenish-sku-id').value;
-  const qty = parseInt(document.getElementById('replenish-qty').value) || 0;
-  const notes = document.getElementById('replenish-notes').value;
+async function doQuickTransfer() {
+  const skuId = document.getElementById('transfer-sku-id').value;
+  const qty = parseInt(document.getElementById('transfer-qty').value) || 0;
+  const direction = document.getElementById('transfer-direction').value;
+  const notes = document.getElementById('transfer-notes').value;
 
   if (qty <= 0) { Toast.error('Qty harus > 0'); return; }
 
   try {
-    await API.post('/inventory/replenish', {
+    const res = await API.post('/inventory/transfer', {
       event_id: window.currentEventId,
       sku_id: skuId,
       qty: qty,
-      notes: notes || 'Quick replenish'
+      direction: direction,
+      notes: notes || 'Quick transfer'
     });
     Modal.hide();
-    Toast.success(`Berhasil transfer ${qty} unit ke Event Floor`);
+    Toast.success(res.message || `Berhasil transfer ${qty} unit`);
     loadInventory();
   } catch(e) { Toast.error(e.message); }
 }

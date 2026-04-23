@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/irwan/bazzar/internal/modules/inventory/domain"
@@ -80,6 +81,56 @@ func (u *InventoryUsecase) Replenish(ctx context.Context, req domain.ReplenishRe
 		Notes:         req.Notes,
 	}
 	u.repo.CreateLog(ctx, inLog)
+
+	return nil
+}
+
+func (u *InventoryUsecase) Transfer(ctx context.Context, req domain.TransferRequest, eventLocID, storageLocID uuid.UUID, userID uuid.UUID) error {
+	var fromLocID, toLocID uuid.UUID
+	var actionOut, actionIn string
+
+	if req.Direction == "event_to_storage" {
+		fromLocID = eventLocID
+		toLocID = storageLocID
+		actionOut = "transfer_out"
+		actionIn = "transfer_in"
+	} else {
+		// default: storage_to_event (same as replenish)
+		fromLocID = storageLocID
+		toLocID = eventLocID
+		actionOut = "replenish_out"
+		actionIn = "replenish_in"
+	}
+
+	// Check source has enough
+	sourceInv, err := u.repo.GetBySkuAndLocation(ctx, req.SKUID, fromLocID)
+	if err != nil || sourceInv.QtyOnhand < req.Qty {
+		available := 0
+		if err == nil {
+			available = sourceInv.QtyOnhand
+		}
+		return fmt.Errorf("stok tidak cukup (tersedia: %d, dibutuhkan: %d)", available, req.Qty)
+	}
+
+	// Deduct from source
+	if err := u.repo.DeductOnhand(ctx, req.SKUID, fromLocID, req.Qty); err != nil {
+		return errors.New("failed to deduct from source")
+	}
+
+	// Add to destination
+	if err := u.repo.UpsertStock(ctx, req.SKUID, toLocID, req.Qty); err != nil {
+		return errors.New("failed to add to destination")
+	}
+
+	// Log both movements
+	u.repo.CreateLog(ctx, &domain.InventoryLog{
+		ID: uuid.New(), SKUID: req.SKUID, LocationID: fromLocID, EventID: req.EventID,
+		Action: actionOut, QtyChange: -req.Qty, ReferenceType: "transfer", UserID: &userID, Notes: req.Notes,
+	})
+	u.repo.CreateLog(ctx, &domain.InventoryLog{
+		ID: uuid.New(), SKUID: req.SKUID, LocationID: toLocID, EventID: req.EventID,
+		Action: actionIn, QtyChange: req.Qty, ReferenceType: "transfer", UserID: &userID, Notes: req.Notes,
+	})
 
 	return nil
 }

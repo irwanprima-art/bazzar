@@ -8,7 +8,10 @@ Router.register('inbound', async () => {
 
   return `
     <div class="toolbar">
-      ${Auth.isAdmin() ? `<button class="btn btn-primary" onclick="showInboundImport()"><span class="material-symbols-rounded">upload_file</span> Import PO</button>` : ''}
+      ${Auth.isAdmin() ? `
+        <button class="btn btn-primary" onclick="showInboundImport()"><span class="material-symbols-rounded">upload_file</span> Import PO</button>
+        <button class="btn btn-secondary" onclick="showManualPO()"><span class="material-symbols-rounded">add_circle</span> Manual PO</button>
+      ` : ''}
     </div>
     <div id="inbound-active" class="hidden"></div>
     <div id="inbound-list" class="card">
@@ -255,4 +258,74 @@ function closeInbound() {
   _currentInboundItems = [];
   document.getElementById('inbound-active').classList.add('hidden');
   document.getElementById('inbound-list').classList.remove('hidden');
+}
+
+// Manual PO Creation
+let _manualPOItems = [];
+
+function showManualPO() {
+  _manualPOItems = [{ sku_code: '', qty_expected: 1 }];
+  renderManualPOModal();
+}
+
+function renderManualPOModal() {
+  const itemRows = _manualPOItems.map((it, i) => `
+    <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
+      <input type="text" class="form-input" placeholder="SKU Code" value="${it.sku_code}" onchange="_manualPOItems[${i}].sku_code=this.value">
+      <input type="number" class="form-input" min="1" value="${it.qty_expected}" style="text-align:center" onchange="_manualPOItems[${i}].qty_expected=parseInt(this.value)||1">
+      ${_manualPOItems.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="removeManualPOItem(${i})">✕</button>` : '<div></div>'}
+    </div>`).join('');
+
+  Modal.show('📋 Manual PO', `
+    <div class="form-group">
+      <label class="form-label">Reference Number</label>
+      <input type="text" class="form-input" id="manual-po-ref" placeholder="e.g. PO-001" value="">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes (optional)</label>
+      <input type="text" class="form-input" id="manual-po-notes" placeholder="e.g. Restock event">
+    </div>
+    <div style="margin-bottom:0.75rem">
+      <label class="form-label">Items</label>
+      <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:0.5rem;margin-bottom:0.5rem;font-size:0.75rem;color:var(--text-muted)">
+        <span>SKU Code</span><span style="text-align:center">Qty</span><span></span>
+      </div>
+      <div id="manual-po-items">${itemRows}</div>
+      <button class="btn btn-sm btn-secondary" onclick="addManualPOItem()" style="margin-top:0.25rem">+ Add Item</button>
+    </div>`,
+    `<button class="btn btn-secondary" onclick="Modal.hide()">Cancel</button>
+     <button class="btn btn-primary" onclick="submitManualPO()">Create PO</button>`);
+}
+
+function addManualPOItem() {
+  _manualPOItems.push({ sku_code: '', qty_expected: 1 });
+  renderManualPOModal();
+}
+
+function removeManualPOItem(i) {
+  _manualPOItems.splice(i, 1);
+  renderManualPOModal();
+}
+
+async function submitManualPO() {
+  const ref = document.getElementById('manual-po-ref').value || 'PO-' + Date.now().toString(36);
+  const notes = document.getElementById('manual-po-notes').value;
+  const items = _manualPOItems.filter(it => it.sku_code.trim());
+
+  if (items.length === 0) {
+    Toast.error('Tambahkan minimal 1 item');
+    return;
+  }
+
+  try {
+    await API.post('/inbound', {
+      event_id: window.currentEventId,
+      reference_number: ref,
+      notes: notes,
+      items: items
+    });
+    Modal.hide();
+    Toast.success('PO berhasil dibuat!');
+    Router.navigate('inbound');
+  } catch(e) { Toast.error(e.message); }
 }

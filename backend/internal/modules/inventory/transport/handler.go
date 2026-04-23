@@ -27,6 +27,7 @@ func (h *InventoryHandler) RegisterRoutes(app *fiber.App, authMw *middleware.Aut
 	inv.Get("/sales-report", h.GetSalesReport)
 	inv.Post("/adjust", authMw.AdminOnly(), h.Adjust)
 	inv.Post("/replenish", authMw.AdminOnly(), h.Replenish)
+	inv.Post("/transfer", authMw.AdminOnly(), h.Transfer)
 }
 
 func (h *InventoryHandler) List(c *fiber.Ctx) error {
@@ -79,6 +80,33 @@ func (h *InventoryHandler) Replenish(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(shared.SuccessMessageResponse("Stock replenished"))
+}
+
+func (h *InventoryHandler) Transfer(c *fiber.Ctx) error {
+	var req domain.TransferRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(shared.ErrorResponse("Invalid request body"))
+	}
+
+	eventLoc, err := h.eventRepo.GetLocationByCode(c.Context(), req.EventID, "EVENT")
+	if err != nil {
+		return c.Status(400).JSON(shared.ErrorResponse("Event location not found"))
+	}
+	storageLoc, err := h.eventRepo.GetLocationByCode(c.Context(), req.EventID, "STORAGE")
+	if err != nil {
+		return c.Status(400).JSON(shared.ErrorResponse("Storage location not found"))
+	}
+
+	userID := middleware.GetUserID(c)
+	if err := h.usecase.Transfer(c.Context(), req, eventLoc.ID, storageLoc.ID, userID); err != nil {
+		return c.Status(400).JSON(shared.ErrorResponse(err.Error()))
+	}
+
+	direction := "Storage → Event"
+	if req.Direction == "event_to_storage" {
+		direction = "Event → Storage"
+	}
+	return c.JSON(shared.SuccessMessageResponse("Transfer berhasil: " + direction))
 }
 
 func (h *InventoryHandler) GetAlerts(c *fiber.Ctx) error {

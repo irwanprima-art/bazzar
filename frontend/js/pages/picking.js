@@ -73,14 +73,20 @@ async function startPickOrder(orderId) {
           const r = res.data;
           const fb = document.getElementById('pick-scan-feedback');
           if (r.message === 'OK') {
+            Sound.success();
             fb.innerHTML = `<span style="color:var(--success)">✓ ${r.sku_code} - ${r.sku_name} (${r.qty_picked}/${r.qty_ordered})</span>`;
             // Update table
             const cell = document.querySelector(`.pick-qty[data-id="${r.item_id}"]`);
             if (cell) cell.textContent = r.qty_picked;
+          } else if (r.message && r.message.includes('sudah cukup')) {
+            Sound.warning();
+            fb.innerHTML = `<span style="color:var(--warning)">⚠ ${r.message}</span>`;
           } else {
+            Sound.error();
             fb.innerHTML = `<span style="color:var(--danger)">⚠ ${r.message}</span>`;
           }
         } catch(err) {
+          Sound.error();
           document.getElementById('pick-scan-feedback').innerHTML = `<span style="color:var(--danger)">✗ ${err.message}</span>`;
         }
         scanInput.focus();

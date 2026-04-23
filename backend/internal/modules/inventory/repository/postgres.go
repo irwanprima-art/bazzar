@@ -214,10 +214,12 @@ func (r *InventoryRepository) GetSalesReport(ctx context.Context, eventID uuid.U
 	query := `
 		SELECT s.id, s.sku_code, s.name,
 			   COALESCE(SUM(CASE WHEN il.action = 'ship' THEN ABS(il.qty_change) ELSE 0 END), 0) as qty_sold,
-			   COALESCE(ie.qty_onhand, 0) as qty_onhand
+			   COALESCE(ie.qty_onhand, 0) + COALESCE(is2.qty_onhand, 0) as qty_onhand
 		FROM skus s
 		LEFT JOIN locations le ON le.event_id = $1 AND le.code = 'EVENT'
+		LEFT JOIN locations ls ON ls.event_id = $1 AND ls.code = 'STORAGE'
 		LEFT JOIN inventory ie ON ie.sku_id = s.id AND ie.location_id = le.id
+		LEFT JOIN inventory is2 ON is2.sku_id = s.id AND is2.location_id = ls.id
 		LEFT JOIN inventory_logs il ON il.sku_id = s.id AND il.event_id = $1 AND il.action = 'ship'`
 
 	args := []interface{}{eventID}
@@ -234,7 +236,10 @@ func (r *InventoryRepository) GetSalesReport(ctx context.Context, eventID uuid.U
 		argIdx++
 	}
 
-	query += ` GROUP BY s.id, s.sku_code, s.name, ie.qty_onhand ORDER BY qty_sold DESC`
+	query += ` GROUP BY s.id, s.sku_code, s.name, ie.qty_onhand, is2.qty_onhand
+			   HAVING COALESCE(SUM(CASE WHEN il.action = 'ship' THEN ABS(il.qty_change) ELSE 0 END), 0) > 0
+			      OR COALESCE(ie.qty_onhand, 0) + COALESCE(is2.qty_onhand, 0) > 0
+			   ORDER BY qty_sold DESC`
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
