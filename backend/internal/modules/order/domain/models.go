@@ -78,3 +78,15 @@ var IssueStatuses = map[string]bool{
 	"Batal":               true,
 	"Belum Bayar":         true,
 }
+
+type AllocateResult struct {
+	TotalOrders int               `json:"total_orders"`
+	Allocated   int               `json:"allocated"`
+	Failed      []AllocateFailure `json:"failed,omitempty"`
+}
+
+type AllocateFailure struct {
+	OrderNumber string `json:"order_number"`
+	SKUCode     string `json:"sku_code"`
+	Reason      string `json:"reason"`
+}

@@ -201,30 +201,71 @@ func (u *OrderUsecase) allocateOrder(ctx context.Context, order *domain.Order, i
 	})
 }
 
-func (u *OrderUsecase) AllocateAll(ctx context.Context, eventID, userID uuid.UUID) (int, error) {
+func (u *OrderUsecase) AllocateAll(ctx context.Context, eventID, userID uuid.UUID) (*domain.AllocateResult, error) {
 	filter := domain.OrderFilter{EventID: eventID, Status: "imported", Page: 1, PageSize: 1000}
 	orders, _, err := u.repo.List(ctx, filter)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	allocated := 0
+	result := &domain.AllocateResult{}
+
 	for _, order := range orders {
 		items, err := u.repo.GetOrderItems(ctx, order.ID)
 		if err != nil || len(items) == 0 {
 			continue
 		}
+
+		allAllocated := true
 		for _, item := range items {
 			if item.SKUID == nil {
+				allAllocated = false
+				result.Failed = append(result.Failed, domain.AllocateFailure{
+					OrderNumber: order.OrderNumber,
+					SKUCode:     item.SKUCode,
+					Reason:      "SKU tidak terdaftar di master",
+				})
 				continue
 			}
+
 			o := order
 			o.ImportedBy = &userID
+			eventLoc, locErr := u.eventRepo.GetLocationByCode(ctx, eventID, "EVENT")
+			if locErr != nil {
+				allAllocated = false
+				result.Failed = append(result.Failed, domain.AllocateFailure{
+					OrderNumber: order.OrderNumber,
+					SKUCode:     item.SKUCode,
+					Reason:      "Lokasi EVENT tidak ditemukan",
+				})
+				continue
+			}
+
+			inv, invErr := u.invUC.GetBySkuAndLocation(ctx, *item.SKUID, eventLoc.ID)
+			if invErr != nil || inv.Available < item.QtyOrdered {
+				allAllocated = false
+				available := 0
+				if invErr == nil {
+					available = inv.Available
+				}
+				result.Failed = append(result.Failed, domain.AllocateFailure{
+					OrderNumber: order.OrderNumber,
+					SKUCode:     item.SKUCode,
+					Reason:      fmt.Sprintf("Stok kurang (butuh %d, tersedia %d) — perlu replenish", item.QtyOrdered, available),
+				})
+				continue
+			}
+
 			u.allocateOrder(ctx, &o, &item, eventID)
-			allocated++
+		}
+
+		if allAllocated {
+			result.Allocated++
 		}
 	}
-	return allocated, nil
+
+	result.TotalOrders = len(orders)
+	return result, nil
 }
 
 func (u *OrderUsecase) GetByID(ctx context.Context, id uuid.UUID) (*domain.Order, error) {

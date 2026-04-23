@@ -115,12 +115,12 @@ func (h *OrderHandler) AllocateAll(c *fiber.Ctx) error {
 	}
 
 	userID := middleware.GetUserID(c)
-	count, err := h.usecase.AllocateAll(c.Context(), eventID, userID)
+	result, err := h.usecase.AllocateAll(c.Context(), eventID, userID)
 	if err != nil {
 		return c.Status(500).JSON(shared.ErrorResponse(err.Error()))
 	}
 
-	return c.JSON(shared.SuccessResponse(fiber.Map{"allocated": count}))
+	return c.JSON(shared.SuccessResponse(result))
 }
 
 func (h *OrderHandler) MarkPrinted(c *fiber.Ctx) error {

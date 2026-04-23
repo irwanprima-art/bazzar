@@ -162,7 +162,43 @@ async function handleImportFile(file) {
 async function allocateAllOrders() {
   try {
     const res = await API.post(`/orders/allocate-all?event_id=${window.currentEventId}`);
-    Toast.success(`Allocated ${res.data.allocated} orders`);
+    const r = res.data;
+    const failedCount = r.failed?.length || 0;
+
+    if (failedCount === 0) {
+      Toast.success(`✓ Berhasil allocate ${r.allocated} dari ${r.total_orders} orders`);
+    } else {
+      // Show detailed modal with failures
+      const failRows = r.failed.map(f => `
+        <tr>
+          <td><strong style="color:var(--accent-light)">${f.order_number}</strong></td>
+          <td>${f.sku_code}</td>
+          <td style="color:var(--danger);font-size:0.8rem">${f.reason}</td>
+        </tr>`).join('');
+
+      Modal.show('⚠️ Hasil Alokasi', `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem">
+          <div class="stat-card success" style="padding:0.75rem;text-align:center">
+            <div class="stat-label">Allocated</div>
+            <div class="stat-value" style="font-size:1.5rem">${r.allocated}</div>
+          </div>
+          <div class="stat-card danger" style="padding:0.75rem;text-align:center">
+            <div class="stat-label">Gagal</div>
+            <div class="stat-value" style="font-size:1.5rem">${failedCount}</div>
+          </div>
+        </div>
+        <div style="max-height:300px;overflow-y:auto">
+          <table style="width:100%;font-size:0.8rem"><thead><tr><th>Order</th><th>SKU</th><th>Alasan</th></tr></thead>
+          <tbody>${failRows}</tbody></table>
+        </div>
+        <div class="alert alert-warning" style="margin-top:1rem">
+          <span class="material-symbols-rounded">info</span>
+          <span>Order yang gagal perlu <strong>Replenish</strong> stok dulu dari halaman Inventory</span>
+        </div>`,
+        `<button class="btn btn-secondary" onclick="Modal.hide()">Tutup</button>`);
+
+      Toast.warning(`${r.allocated} allocated, ${failedCount} gagal (stok kurang)`);
+    }
     loadOrders();
   } catch(e) { Toast.error(e.message); }
 }
