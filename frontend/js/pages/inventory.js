@@ -37,66 +37,113 @@ async function loadInventory() {
   } catch(e) { document.getElementById('inventory-table').innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
 }
 
-async function showTransferModal() {
-  // Load both inventories
-  let allSkus = [];
-  try {
-    const res = await API.get(`/inventory?event_id=${window.currentEventId}`);
-    allSkus = res.data || [];
-  } catch(e) {}
-
-  const skuMap = {};
-  allSkus.forEach(s => {
-    if (!skuMap[s.sku_id]) skuMap[s.sku_id] = { sku_id: s.sku_id, sku_code: s.sku_code, sku_name: s.sku_name, storage: 0, event: 0 };
-    if (s.location_code === 'STORAGE') skuMap[s.sku_id].storage = s.qty_onhand;
-    if (s.location_code === 'EVENT') skuMap[s.sku_id].event = s.qty_onhand;
-  });
-
-  const skuList = Object.values(skuMap);
-  const skuOptions = skuList.map(s => `<option value="${s.sku_id}" data-storage="${s.storage}" data-event="${s.event}">${s.sku_code} - ${s.sku_name || ''}</option>`).join('');
-
+// Transfer from top button: scan first, then show form
+function showTransferModal() {
   Modal.show('🔄 Transfer Stock', `
     <div class="form-group">
+      <label class="form-label">Scan / Ketik Barcode atau SKU Code</label>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <input type="text" class="form-input" id="transfer-scan-input" placeholder="Scan barcode atau ketik SKU..." autofocus style="flex:1">
+        <button class="scan-with-camera-btn" onclick="openTransferCamera()" title="Scan pakai Kamera">
+          <span class="material-symbols-rounded">photo_camera</span>
+        </button>
+      </div>
+    </div>
+    <div id="transfer-scan-result" style="margin-top:0.5rem"></div>`,
+    `<button class="btn btn-secondary" onclick="Modal.hide()">Cancel</button>
+     <button class="btn btn-primary" onclick="doTransferScanLookup()">Cari</button>`);
+
+  setTimeout(() => {
+    const inp = document.getElementById('transfer-scan-input');
+    inp?.focus();
+    inp?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); doTransferScanLookup(); }
+    });
+  }, 100);
+}
+
+function openTransferCamera() {
+  CameraScanner.open((decodedText) => {
+    const inp = document.getElementById('transfer-scan-input');
+    if (inp) inp.value = decodedText;
+    doTransferScanLookup();
+  });
+}
+
+async function doTransferScanLookup() {
+  const input = document.getElementById('transfer-scan-input')?.value?.trim();
+  if (!input) { Toast.error('Masukkan barcode / SKU code'); return; }
+
+  // Try to find SKU via barcode endpoint
+  try {
+    const res = await API.get(`/skus/barcode/${encodeURIComponent(input)}`);
+    const sku = res.data;
+    Modal.hide();
+    showTransferFormForSku(sku.id, sku.sku_code, sku.name || '');
+    return;
+  } catch(e) {}
+
+  // Try by sku_code via search
+  try {
+    const res = await API.get(`/skus?search=${encodeURIComponent(input)}&page_size=5`);
+    const skus = res.data || [];
+    const exact = skus.find(s => s.sku_code === input);
+    if (exact) {
+      Modal.hide();
+      showTransferFormForSku(exact.id, exact.sku_code, exact.name || '');
+      return;
+    }
+  } catch(e) {}
+
+  document.getElementById('transfer-scan-result').innerHTML =
+    `<div class="alert alert-danger"><span class="material-symbols-rounded">error</span> SKU/barcode "${input}" tidak ditemukan</div>`;
+}
+
+async function showTransferFormForSku(skuId, skuCode, skuName) {
+  // Get stock info for this SKU
+  let storageStock = 0, eventStock = 0;
+  try {
+    const res = await API.get(`/inventory?event_id=${window.currentEventId}`);
+    (res.data || []).forEach(inv => {
+      if (inv.sku_id === skuId) {
+        if (inv.location_code === 'STORAGE') storageStock = inv.qty_onhand;
+        if (inv.location_code === 'EVENT') eventStock = inv.qty_onhand;
+      }
+    });
+  } catch(e) {}
+
+  Modal.show(`🔄 Transfer: ${skuCode}`, `
+    <p style="font-size:0.95rem;font-weight:700;color:var(--accent-light);margin-bottom:0.5rem">${skuName}</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1rem">
+      <div class="stat-card info" style="padding:0.5rem;text-align:center">
+        <div style="font-size:0.7rem;color:var(--text-muted)">Storage</div>
+        <div style="font-size:1.2rem;font-weight:700">${storageStock}</div>
+      </div>
+      <div class="stat-card success" style="padding:0.5rem;text-align:center">
+        <div style="font-size:0.7rem;color:var(--text-muted)">Event</div>
+        <div style="font-size:1.2rem;font-weight:700">${eventStock}</div>
+      </div>
+    </div>
+    <div class="form-group">
       <label class="form-label">Direction</label>
-      <select class="form-select" id="transfer-direction" onchange="updateTransferInfo()">
+      <select class="form-select" id="transfer-direction">
         <option value="storage_to_event">Storage → Event Floor</option>
         <option value="event_to_storage">Event Floor → Storage</option>
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label">SKU</label>
-      <select class="form-select" id="transfer-sku" onchange="updateTransferInfo()">
-        <option value="">Pilih SKU...</option>
-        ${skuOptions}
-      </select>
-    </div>
-    <div class="form-group">
       <label class="form-label">Qty Transfer</label>
-      <input type="number" class="form-input" id="transfer-qty" min="1" value="1" style="text-align:center">
+      <input type="number" class="form-input" id="transfer-qty" min="1" value="1" style="text-align:center;font-size:1.2rem;font-weight:700">
     </div>
     <div class="form-group">
       <label class="form-label">Notes (optional)</label>
       <input type="text" class="form-input" id="transfer-notes" placeholder="e.g. Refill event floor">
     </div>
-    <div id="transfer-info" style="margin-top:0.5rem"></div>`,
+    <input type="hidden" id="transfer-sku-id" value="${skuId}">`,
     `<button class="btn btn-secondary" onclick="Modal.hide()">Cancel</button>
-     <button class="btn btn-primary" onclick="doTransfer()">Transfer</button>`);
-}
+     <button class="btn btn-primary" onclick="doQuickTransfer()">Transfer</button>`);
 
-function updateTransferInfo() {
-  const skuSelect = document.getElementById('transfer-sku');
-  const dir = document.getElementById('transfer-direction').value;
-  const opt = skuSelect?.selectedOptions[0];
-  const info = document.getElementById('transfer-info');
-
-  if (!opt || !skuSelect.value) { info.innerHTML = ''; return; }
-
-  const storage = opt.dataset.storage || 0;
-  const event = opt.dataset.event || 0;
-  const fromLabel = dir === 'storage_to_event' ? 'Storage' : 'Event';
-  const fromStock = dir === 'storage_to_event' ? storage : event;
-
-  info.innerHTML = `<div class="alert alert-info"><span class="material-symbols-rounded">info</span> Stok ${fromLabel}: <strong>${fromStock}</strong> | Storage: ${storage} | Event: ${event}</div>`;
+  setTimeout(() => document.getElementById('transfer-qty')?.focus(), 100);
 }
 
 function quickReplenish(skuId, skuCode, skuName) {
@@ -124,28 +171,6 @@ function quickReplenish(skuId, skuCode, skuName) {
   setTimeout(() => document.getElementById('transfer-qty')?.focus(), 100);
 }
 
-async function doTransfer() {
-  const skuId = document.getElementById('transfer-sku').value;
-  const qty = parseInt(document.getElementById('transfer-qty').value) || 0;
-  const direction = document.getElementById('transfer-direction').value;
-  const notes = document.getElementById('transfer-notes').value;
-
-  if (!skuId) { Toast.error('Pilih SKU dulu'); return; }
-  if (qty <= 0) { Toast.error('Qty harus > 0'); return; }
-
-  try {
-    const res = await API.post('/inventory/transfer', {
-      event_id: window.currentEventId,
-      sku_id: skuId,
-      qty: qty,
-      direction: direction,
-      notes: notes || 'Manual transfer'
-    });
-    Modal.hide();
-    Toast.success(res.message || `Berhasil transfer ${qty} unit`);
-    loadInventory();
-  } catch(e) { Toast.error(e.message); }
-}
 
 async function doQuickTransfer() {
   const skuId = document.getElementById('transfer-sku-id').value;

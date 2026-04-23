@@ -36,15 +36,19 @@ func (u *PickingUsecase) StartPicking(ctx context.Context, orderID, userID uuid.
 	if err != nil {
 		return errors.New("order not found")
 	}
-	if order.Status != "printed" {
+	if order.Status != "printed" && order.Status != "picking" {
 		return fmt.Errorf("order must be printed first (current: %s)", order.Status)
 	}
 
-	now := time.Now()
-	return u.orderUC.UpdateStatus(ctx, orderID, "picking", map[string]interface{}{
-		"assigned_picker_id":  userID,
-		"picking_started_at": now,
-	})
+	// Only update status if not already picking (resume case)
+	if order.Status == "printed" {
+		now := time.Now()
+		return u.orderUC.UpdateStatus(ctx, orderID, "picking", map[string]interface{}{
+			"assigned_picker_id":  userID,
+			"picking_started_at": now,
+		})
+	}
+	return nil
 }
 
 func (u *PickingUsecase) ScanItem(ctx context.Context, orderID uuid.UUID, req domain.ScanRequest, userID uuid.UUID) (*domain.ScanResult, error) {

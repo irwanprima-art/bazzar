@@ -1,15 +1,31 @@
 // Picking Page
 Router.register('picking', async () => {
   const eventId = window.currentEventId;
-  let orders = [];
+  let printedOrders = [], pickingOrders = [];
   try {
-    const res = await API.get(`/orders?event_id=${eventId}&status=printed&page_size=100`);
-    orders = res.data || [];
+    const res1 = await API.get(`/orders?event_id=${eventId}&status=printed&page_size=100`);
+    printedOrders = res1.data || [];
   } catch(e) {}
+  try {
+    const res2 = await API.get(`/orders?event_id=${eventId}&status=picking&page_size=100`);
+    pickingOrders = res2.data || [];
+  } catch(e) {}
+
+  const pickingSection = pickingOrders.length ? `
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-header"><span class="card-title" style="color:var(--warning)">⏸ In Progress (Resume)</span></div>
+      ${renderTable([
+        { label: 'Order #', render: r => `<strong style="color:var(--warning)">${r.order_number}</strong>` },
+        { label: 'Buyer', key: 'buyer_name' },
+        { label: 'Status', render: r => statusBadge(r.status) },
+        { label: '', render: r => `<button class="btn btn-sm btn-warning" onclick="startPickOrder('${r.id}')">▶ Resume</button>` }
+      ], pickingOrders, '')}
+    </div>` : '';
 
   return `
     <div id="picking-active" class="hidden"></div>
     <div id="picking-list">
+      ${pickingSection}
       <div class="card" style="margin-bottom:1rem">
         <div class="card-header"><span class="card-title">Orders Ready for Picking</span></div>
         ${renderTable([
@@ -17,7 +33,7 @@ Router.register('picking', async () => {
           { label: 'Buyer', key: 'buyer_name' },
           { label: 'Status', render: r => statusBadge(r.status) },
           { label: '', render: r => `<button class="btn btn-sm btn-primary" onclick="startPickOrder('${r.id}')">▶ Start</button>` }
-        ], orders, 'No orders ready for picking')}
+        ], printedOrders, 'No orders ready for picking')}
       </div>
     </div>`;
 });
