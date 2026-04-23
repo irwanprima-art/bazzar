@@ -21,7 +21,7 @@ const CameraScanner = {
           <span>Scan Barcode / QR</span>
           <button class="btn btn-sm btn-danger" id="camera-scanner-close">✕</button>
         </div>
-        <div id="camera-scanner-reader"></div>
+        <div id="camera-scanner-reader" style="width:100%;min-height:300px"></div>
         <div class="camera-scanner-footer">
           <div id="camera-scanner-result" style="font-size:0.85rem;color:var(--text-muted)">Arahkan kamera ke barcode...</div>
         </div>
@@ -35,50 +35,85 @@ const CameraScanner = {
       if (e.target === overlay) this.close();
     });
 
-    // Init scanner
-    this._scanner = new Html5Qrcode('camera-scanner-reader');
-    
-    const config = {
-      fps: 10,
-      qrbox: { width: 280, height: 150 },
-      aspectRatio: 1.0,
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.ITF,
-      ]
-    };
+    // Start camera after DOM is ready
+    setTimeout(() => this._startCamera(onResult), 200);
+  },
 
-    this._scanner.start(
-      { facingMode: 'environment' },
-      config,
-      (decodedText) => {
-        Sound.success();
-        document.getElementById('camera-scanner-result').innerHTML = 
-          `<span style="color:var(--success)">✓ Terdeteksi: <strong>${decodedText}</strong></span>`;
-        
-        // Small delay so user sees the result, then callback
-        setTimeout(() => {
-          this.close();
-          if (onResult) onResult(decodedText);
-        }, 400);
-      },
-      () => {} // ignore scan failures (continuous scanning)
-    ).catch(err => {
-      document.getElementById('camera-scanner-result').innerHTML = 
-        `<span style="color:var(--danger)">Gagal akses kamera: ${err}</span>`;
-    });
+  _startCamera(onResult) {
+    try {
+      // formatsToSupport goes in constructor config
+      const config = { 
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF,
+        ],
+        verbose: false
+      };
+
+      this._scanner = new Html5Qrcode('camera-scanner-reader', config);
+
+      const scanConfig = {
+        fps: 10,
+        qrbox: { width: 250, height: 120 },
+        aspectRatio: 1.333,
+      };
+
+      this._scanner.start(
+        { facingMode: 'environment' },
+        scanConfig,
+        (decodedText) => {
+          // Barcode detected
+          Sound.success();
+          const resultEl = document.getElementById('camera-scanner-result');
+          if (resultEl) {
+            resultEl.innerHTML = `<span style="color:var(--success)">✓ <strong>${decodedText}</strong></span>`;
+          }
+          // Brief delay so user sees result
+          setTimeout(() => {
+            this.close();
+            if (onResult) onResult(decodedText);
+          }, 500);
+        },
+        (errorMessage) => {
+          // Ignore continuous scan failures - this fires every frame without a barcode
+        }
+      ).catch(err => {
+        console.error('Camera start error:', err);
+        const resultEl = document.getElementById('camera-scanner-result');
+        if (resultEl) {
+          resultEl.innerHTML = `<span style="color:var(--danger)">Gagal akses kamera. Pastikan izin kamera diberikan.<br><small>${err}</small></span>`;
+        }
+      });
+    } catch(err) {
+      console.error('Scanner init error:', err);
+      const resultEl = document.getElementById('camera-scanner-result');
+      if (resultEl) {
+        resultEl.innerHTML = `<span style="color:var(--danger)">Error: ${err.message || err}</span>`;
+      }
+    }
   },
 
   close() {
     if (this._scanner) {
-      this._scanner.stop().catch(() => {});
-      this._scanner.clear().catch(() => {});
+      try {
+        const state = this._scanner.getState();
+        // Only stop if scanning (state 2 = SCANNING)
+        if (state === 2) {
+          this._scanner.stop().then(() => {
+            this._scanner.clear();
+          }).catch(() => {});
+        } else {
+          this._scanner.clear();
+        }
+      } catch(e) {
+        // Ignore cleanup errors
+      }
       this._scanner = null;
     }
     const overlay = document.getElementById('camera-scanner-overlay');
