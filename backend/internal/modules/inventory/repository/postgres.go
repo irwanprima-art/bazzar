@@ -175,13 +175,17 @@ func (r *InventoryRepository) GetLogs(ctx context.Context, eventID uuid.UUID, sk
 			   il.reference_id, COALESCE(il.reference_type,''), il.user_id, COALESCE(il.notes,''), il.created_at,
 			   s.sku_code, COALESCE(s.name,''), COALESCE(u.username,'system'),
 			   COALESCE(l.code,''),
-			   COALESCE(ord.order_number, io.reference_number, '')
+			   COALESCE(
+			     CASE
+			       WHEN il.reference_type = 'order' THEN (SELECT order_number FROM orders WHERE id = il.reference_id LIMIT 1)
+			       WHEN il.reference_type = 'inbound' THEN (SELECT reference_number FROM inbound_orders WHERE id = il.reference_id LIMIT 1)
+			       ELSE ''
+			     END, ''
+			   ) as ref_number
 		FROM inventory_logs il
 		JOIN skus s ON s.id = il.sku_id
 		LEFT JOIN users u ON u.id = il.user_id
 		LEFT JOIN locations l ON l.id = il.location_id
-		LEFT JOIN orders ord ON ord.id = il.reference_id AND il.reference_type = 'order'
-		LEFT JOIN inbound_orders io ON io.id = il.reference_id AND il.reference_type = 'inbound'
 		WHERE il.event_id = $1`
 
 	args := []interface{}{eventID}

@@ -41,7 +41,7 @@ async function loadStockLogs() {
   tableDiv.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted)">Loading...</div>';
 
   try {
-    let url = `/inventory/logs?event_id=${eventId}&limit=500`;
+    let url = `/inventory/logs?event_id=${eventId}&limit=100`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     const res = await API.get(url);
     let logs = res.data || [];
