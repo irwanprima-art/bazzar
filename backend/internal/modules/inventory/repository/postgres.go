@@ -169,14 +169,19 @@ func (r *InventoryRepository) CreateLog(ctx context.Context, log *domain.Invento
 	return err
 }
 
-func (r *InventoryRepository) GetLogs(ctx context.Context, eventID uuid.UUID, skuID *uuid.UUID, limit int) ([]domain.InventoryLog, error) {
+func (r *InventoryRepository) GetLogs(ctx context.Context, eventID uuid.UUID, skuID *uuid.UUID, search string, limit int) ([]domain.InventoryLog, error) {
 	query := `
 		SELECT il.id, il.sku_id, il.location_id, il.event_id, il.action, il.qty_change,
-			   il.reference_id, il.reference_type, il.user_id, COALESCE(il.notes,''), il.created_at,
-			   s.sku_code, s.name, COALESCE(u.username,'system')
+			   il.reference_id, COALESCE(il.reference_type,''), il.user_id, COALESCE(il.notes,''), il.created_at,
+			   s.sku_code, COALESCE(s.name,''), COALESCE(u.username,'system'),
+			   COALESCE(l.code,''),
+			   COALESCE(ord.order_number, io.reference_number, '')
 		FROM inventory_logs il
 		JOIN skus s ON s.id = il.sku_id
 		LEFT JOIN users u ON u.id = il.user_id
+		LEFT JOIN locations l ON l.id = il.location_id
+		LEFT JOIN orders ord ON ord.id = il.reference_id AND il.reference_type = 'order'
+		LEFT JOIN inbound_orders io ON io.id = il.reference_id AND il.reference_type = 'inbound'
 		WHERE il.event_id = $1`
 
 	args := []interface{}{eventID}
@@ -184,6 +189,11 @@ func (r *InventoryRepository) GetLogs(ctx context.Context, eventID uuid.UUID, sk
 	if skuID != nil {
 		query += fmt.Sprintf(` AND il.sku_id = $%d`, argIdx)
 		args = append(args, *skuID)
+		argIdx++
+	}
+	if search != "" {
+		query += fmt.Sprintf(` AND (s.sku_code ILIKE $%d OR s.name ILIKE $%d)`, argIdx, argIdx)
+		args = append(args, "%"+search+"%")
 		argIdx++
 	}
 	query += fmt.Sprintf(` ORDER BY il.created_at DESC LIMIT $%d`, argIdx)
@@ -202,6 +212,7 @@ func (r *InventoryRepository) GetLogs(ctx context.Context, eventID uuid.UUID, sk
 			&l.ID, &l.SKUID, &l.LocationID, &l.EventID, &l.Action, &l.QtyChange,
 			&l.ReferenceID, &l.ReferenceType, &l.UserID, &l.Notes, &l.CreatedAt,
 			&l.SKUCode, &l.SKUName, &l.Username,
+			&l.LocationCode, &l.ReferenceNumber,
 		); err != nil {
 			return nil, err
 		}

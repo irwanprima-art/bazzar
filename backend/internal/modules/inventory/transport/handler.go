@@ -137,8 +137,9 @@ func (h *InventoryHandler) GetLogs(c *fiber.Ctx) error {
 		}
 	}
 
-	limit := c.QueryInt("limit", 50)
-	logs, err := h.usecase.GetLogs(c.Context(), eventID, skuID, limit)
+	search := c.Query("search")
+	limit := c.QueryInt("limit", 200)
+	logs, err := h.usecase.GetLogs(c.Context(), eventID, skuID, search, limit)
 	if err != nil {
 		return c.Status(500).JSON(shared.ErrorResponse("Failed to get logs"))
 	}

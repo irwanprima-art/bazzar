@@ -37,9 +37,11 @@ type InventoryLog struct {
 	CreatedAt     time.Time `json:"created_at"`
 
 	// Joined
-	SKUCode  string `json:"sku_code,omitempty"`
-	SKUName  string `json:"sku_name,omitempty"`
-	Username string `json:"username,omitempty"`
+	SKUCode         string `json:"sku_code,omitempty"`
+	SKUName         string `json:"sku_name,omitempty"`
+	Username        string `json:"username,omitempty"`
+	LocationCode    string `json:"location_code,omitempty"`
+	ReferenceNumber string `json:"reference_number,omitempty"`
 }
 
 type AdjustRequest struct {

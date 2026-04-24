@@ -143,11 +143,11 @@ func (u *InventoryUsecase) GetReplenishAlerts(ctx context.Context, eventID uuid.
 	return u.repo.GetReplenishAlerts(ctx, eventID)
 }
 
-func (u *InventoryUsecase) GetLogs(ctx context.Context, eventID uuid.UUID, skuID *uuid.UUID, limit int) ([]domain.InventoryLog, error) {
+func (u *InventoryUsecase) GetLogs(ctx context.Context, eventID uuid.UUID, skuID *uuid.UUID, search string, limit int) ([]domain.InventoryLog, error) {
 	if limit <= 0 {
-		limit = 50
+		limit = 100
 	}
-	return u.repo.GetLogs(ctx, eventID, skuID, limit)
+	return u.repo.GetLogs(ctx, eventID, skuID, search, limit)
 }
 
 func (u *InventoryUsecase) GetSalesReport(ctx context.Context, eventID uuid.UUID) ([]domain.SalesReport, error) {
