@@ -64,6 +64,9 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 
 	result := &domain.ImportResult{}
 
+	// Track already-processed orders in this import batch (for multi-line orders)
+	seenOrders := make(map[string]*domain.Order) // orderNumber -> order
+
 	for i, row := range rows[1:] {
 		result.TotalRows++
 		rowNum := i + 2
@@ -101,6 +104,13 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 		}
 		totalPayment, _ := strconv.ParseFloat(strings.ReplaceAll(totalStr, ".", ""), 64)
 
+		// Check if this order was already seen in this import batch (multi-line order)
+		if existingOrder, ok := seenOrders[orderNum]; ok {
+			// Same order, just add a new item
+			u.addItemToOrder(ctx, existingOrder, skuCode, productName, variationName, qty, eventID)
+			continue
+		}
+
 		// Determine order status
 		orderStatus := "imported"
 		if domain.IssueStatuses[platformStatus] {
@@ -136,31 +146,11 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 			continue
 		}
 
-		// Look up SKU
-		var skuID *uuid.UUID
-		if skuCode != "" {
-			sku, err := u.skuRepo.GetBySKUCode(ctx, skuCode)
-			if err == nil {
-				skuID = &sku.ID
-			}
-		}
+		// Track this order for subsequent rows with the same order number
+		seenOrders[orderNum] = order
 
-		// Create order item
-		item := &domain.OrderItem{
-			ID:            uuid.New(),
-			OrderID:       order.ID,
-			SKUID:         skuID,
-			SKUCode:       skuCode,
-			ProductName:   productName,
-			VariationName: variationName,
-			QtyOrdered:    qty,
-		}
-		u.repo.UpsertOrderItem(ctx, item)
-
-		// Auto-allocate if not an issue order and SKU is known
-		if orderStatus == "imported" && skuID != nil {
-			u.allocateOrder(ctx, order, item, eventID)
-		}
+		// Add item
+		u.addItemToOrder(ctx, order, skuCode, productName, variationName, qty, eventID)
 
 		if upsertResult == "updated" {
 			result.Updated++
@@ -170,6 +160,32 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 	}
 
 	return result, nil
+}
+
+func (u *OrderUsecase) addItemToOrder(ctx context.Context, order *domain.Order, skuCode, productName, variationName string, qty int, eventID uuid.UUID) {
+	var skuID *uuid.UUID
+	if skuCode != "" {
+		sku, err := u.skuRepo.GetBySKUCode(ctx, skuCode)
+		if err == nil {
+			skuID = &sku.ID
+		}
+	}
+
+	item := &domain.OrderItem{
+		ID:            uuid.New(),
+		OrderID:       order.ID,
+		SKUID:         skuID,
+		SKUCode:       skuCode,
+		ProductName:   productName,
+		VariationName: variationName,
+		QtyOrdered:    qty,
+	}
+	u.repo.UpsertOrderItem(ctx, item)
+
+	// Auto-allocate if not an issue order and SKU is known
+	if order.Status == "imported" && skuID != nil {
+		u.allocateOrder(ctx, order, item, eventID)
+	}
 }
 
 func (u *OrderUsecase) allocateOrder(ctx context.Context, order *domain.Order, item *domain.OrderItem, eventID uuid.UUID) {
