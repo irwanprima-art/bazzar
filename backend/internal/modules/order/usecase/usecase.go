@@ -106,8 +106,16 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 
 		// Check if this order was already seen in this import batch (multi-line order)
 		if existingOrder, ok := seenOrders[orderNum]; ok {
-			// Same order, just add a new item
-			u.addItemToOrder(ctx, existingOrder, skuCode, productName, variationName, qty, eventID)
+			// Same order in batch — check if item already exists before adding
+			existingItems, _ := u.repo.GetOrderItems(ctx, existingOrder.ID)
+			if !itemExistsInOrder(existingItems, skuCode, variationName) {
+				if existingOrder.Status == "shipped" || existingOrder.Status == "picked" || existingOrder.Status == "allocated" || existingOrder.Status == "printed" {
+					u.addItemToOrderWithStatus(ctx, existingOrder, skuCode, productName, variationName, qty, eventID, &userID)
+					result.ItemsPatched++
+				} else {
+					u.addItemToOrder(ctx, existingOrder, skuCode, productName, variationName, qty, eventID)
+				}
+			}
 			continue
 		}
 
