@@ -21,7 +21,7 @@ const Router = {
     const titles = {
       dashboard: 'Dashboard', orders: 'Orders', picking: 'Picking',
       handover: 'Handover', inbound: 'Inbound', inventory: 'Inventory',
-      skus: 'SKU Master', users: 'Users', events: 'Events'
+      skus: 'SKU Master', users: 'Users', events: 'Events', stocklog: 'Stock Log'
     };
     title.textContent = titles[page] || page;
 

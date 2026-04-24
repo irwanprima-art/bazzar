@@ -29,7 +29,14 @@ Router.register('stocklog', async () => {
       <div id="stock-log-summary" style="padding:0.75rem 1rem;border-bottom:1px solid var(--border-color)"></div>
       <div id="stock-log-table" style="padding:0">Loading...</div>
     </div>`;
-}, () => { loadStockLogs(); });
+});
+
+function init_stocklog() {
+  loadStockLogs();
+  document.getElementById('log-search')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loadStockLogs();
+  });
+}
 
 async function loadStockLogs() {
   const search = document.getElementById('log-search')?.value?.trim() || '';
