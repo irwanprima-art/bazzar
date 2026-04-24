@@ -58,6 +58,7 @@ type ImportResult struct {
 	TotalRows      int      `json:"total_rows"`
 	Imported       int      `json:"imported"`
 	Updated        int      `json:"updated"`
+	ItemsPatched   int      `json:"items_patched"`
 	Skipped        int      `json:"skipped"`
 	Duplicates     int      `json:"duplicates"`
 	Errors         int      `json:"errors"`

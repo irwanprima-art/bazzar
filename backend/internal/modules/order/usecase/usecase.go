@@ -141,7 +141,16 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 			continue
 		}
 
-		if upsertResult == "duplicate" {
+		if upsertResult.Action == "duplicate" {
+			// Order exists — check if this item is missing and add it
+			order.Status = upsertResult.ExistingStatus // use actual DB status
+			existingItems, _ := u.repo.GetOrderItems(ctx, upsertResult.ExistingID)
+			if !itemExistsInOrder(existingItems, skuCode, variationName) {
+				u.addItemToOrderWithStatus(ctx, order, skuCode, productName, variationName, qty, eventID, &userID)
+				result.ItemsPatched++
+			}
+			// Track for multi-line duplicate orders
+			seenOrders[orderNum] = order
 			result.Duplicates++
 			continue
 		}
@@ -152,7 +161,7 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 		// Add item
 		u.addItemToOrder(ctx, order, skuCode, productName, variationName, qty, eventID)
 
-		if upsertResult == "updated" {
+		if upsertResult.Action == "updated" {
 			result.Updated++
 		} else {
 			result.Imported++
@@ -160,6 +169,16 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 	}
 
 	return result, nil
+}
+
+// itemExistsInOrder checks if an item with the same SKU+variation already exists
+func itemExistsInOrder(items []domain.OrderItem, skuCode, variationName string) bool {
+	for _, it := range items {
+		if it.SKUCode == skuCode && it.VariationName == variationName {
+			return true
+		}
+	}
+	return false
 }
 
 func (u *OrderUsecase) addItemToOrder(ctx context.Context, order *domain.Order, skuCode, productName, variationName string, qty int, eventID uuid.UUID) {
@@ -184,6 +203,63 @@ func (u *OrderUsecase) addItemToOrder(ctx context.Context, order *domain.Order, 
 
 	// Auto-allocate if not an issue order and SKU is known
 	if order.Status == "imported" && skuID != nil {
+		u.allocateOrder(ctx, order, item, eventID)
+	}
+}
+
+// addItemToOrderWithStatus adds a missing item and handles stock based on current order status
+func (u *OrderUsecase) addItemToOrderWithStatus(ctx context.Context, order *domain.Order, skuCode, productName, variationName string, qty int, eventID uuid.UUID, userID *uuid.UUID) {
+	var skuID *uuid.UUID
+	if skuCode != "" {
+		sku, err := u.skuRepo.GetBySKUCode(ctx, skuCode)
+		if err == nil {
+			skuID = &sku.ID
+		}
+	}
+
+	item := &domain.OrderItem{
+		ID:            uuid.New(),
+		OrderID:       order.ID,
+		SKUID:         skuID,
+		SKUCode:       skuCode,
+		ProductName:   productName,
+		VariationName: variationName,
+		QtyOrdered:    qty,
+	}
+	u.repo.UpsertOrderItem(ctx, item)
+
+	if skuID == nil {
+		return
+	}
+
+	eventLoc, err := u.eventRepo.GetLocationByCode(ctx, eventID, "EVENT")
+	if err != nil {
+		return
+	}
+
+	switch order.Status {
+	case "shipped":
+		// Order already shipped physically — deduct stock directly
+		u.invUC.DeductOnhand(ctx, *skuID, eventLoc.ID, qty)
+		u.invUC.CreateLog(ctx, &invDomain.InventoryLog{
+			ID: uuid.New(), SKUID: *skuID, LocationID: eventLoc.ID, EventID: eventID,
+			Action: "ship", QtyChange: -qty,
+			ReferenceID: &order.ID, ReferenceType: "order", UserID: userID,
+			Notes: "patched: item added to shipped order",
+		})
+
+	case "picked", "allocated", "printed":
+		// Order not yet shipped — allocate stock
+		u.invUC.AddAllocated(ctx, *skuID, eventLoc.ID, qty)
+		u.invUC.CreateLog(ctx, &invDomain.InventoryLog{
+			ID: uuid.New(), SKUID: *skuID, LocationID: eventLoc.ID, EventID: eventID,
+			Action: "allocate", QtyChange: -qty,
+			ReferenceID: &order.ID, ReferenceType: "order", UserID: userID,
+			Notes: "patched: item added to existing order",
+		})
+
+	case "imported":
+		// Normal flow
 		u.allocateOrder(ctx, order, item, eventID)
 	}
 }

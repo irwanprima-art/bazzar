@@ -150,13 +150,16 @@ async function handleImportFile(file) {
         <div>Total Rows: <strong>${r.total_rows}</strong></div>
         <div>Imported: <strong style="color:var(--success)">${r.imported}</strong></div>
         <div>Updated: <strong style="color:var(--accent-light)">${r.updated || 0}</strong></div>
+        <div>Items Patched: <strong style="color:#00cec9">${r.items_patched || 0}</strong></div>
         <div>Duplicates: <strong style="color:var(--warning)">${r.duplicates}</strong></div>
         <div>Skipped: <strong>${r.skipped}</strong></div>
         <div>Errors: <strong style="color:var(--danger)">${r.errors}</strong></div>
       </div>
       ${r.skipped_details?.length ? `<details style="margin-top:0.75rem;font-size:0.8rem"><summary style="cursor:pointer;color:var(--text-muted)">Skipped details</summary><pre style="max-height:200px;overflow:auto;font-size:0.75rem;color:var(--text-muted);margin-top:0.5rem">${r.skipped_details.join('\n')}</pre></details>` : ''}`;
-    const updText = r.updated ? `, ${r.updated} updated` : '';
-    Toast.success(`Imported ${r.imported}${updText} orders`);
+    const parts = [`${r.imported} imported`];
+    if (r.updated) parts.push(`${r.updated} updated`);
+    if (r.items_patched) parts.push(`${r.items_patched} items patched`);
+    Toast.success(parts.join(', '));
     loadOrders();
   } catch(e) { resultDiv.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
 }
