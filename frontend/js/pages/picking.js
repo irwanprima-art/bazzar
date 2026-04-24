@@ -50,8 +50,9 @@ async function startPickOrder(orderId) {
 
     const itemRows = (order.items || []).map(it => `
       <tr id="pick-item-${it.id}">
-        <td>${it.sku_code}</td>
-        <td>${it.variation_name || it.sku_name || '-'}</td>
+        <td><strong style="color:var(--accent-light)">${it.sku_code}</strong>
+          <div style="font-size:0.7rem;color:var(--text-muted)">${it.sku_name || ''}</div></td>
+        <td>${it.product_name || '-'}${it.variation_name ? `<div style="font-size:0.7rem;color:var(--text-muted)">${it.variation_name}</div>` : ''}</td>
         <td><strong>${it.qty_ordered}</strong></td>
         <td class="pick-qty" data-id="${it.id}">${it.qty_picked}</td>
         <td>${it.qty_ordered - it.qty_picked > 0 ? `<span style="color:var(--warning)">${it.qty_ordered - it.qty_picked}</span>` : '<span style="color:var(--success)">✓</span>'}</td>
@@ -74,7 +75,7 @@ async function startPickOrder(orderId) {
       </div>
       <div class="card">
         <table style="width:100%;font-size:0.85rem">
-          <thead><tr><th>SKU</th><th>Item</th><th>Ordered</th><th>Picked</th><th>Remain</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Produk</th><th>Ordered</th><th>Picked</th><th>Remain</th></tr></thead>
           <tbody>${itemRows}</tbody>
         </table>
       </div>
