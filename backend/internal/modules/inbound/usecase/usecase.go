@@ -129,6 +129,35 @@ func (u *InboundUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, 
 }
 
 func (u *InboundUsecase) CreateManual(ctx context.Context, req domain.CreateInboundRequest, userID uuid.UUID) (*domain.InboundOrder, error) {
+	// Validate all SKUs first
+	type resolvedItem struct {
+		SkuID       uuid.UUID
+		QtyExpected int
+	}
+	var resolved []resolvedItem
+	var notFound []string
+
+	for _, it := range req.Items {
+		code := strings.TrimSpace(it.SKUCode)
+		if code == "" {
+			continue
+		}
+		sku, err := u.skuRepo.GetByBarcodeOrSKUCode(ctx, code)
+		if err != nil {
+			notFound = append(notFound, code)
+			continue
+		}
+		resolved = append(resolved, resolvedItem{SkuID: sku.ID, QtyExpected: it.QtyExpected})
+	}
+
+	if len(notFound) > 0 {
+		return nil, fmt.Errorf("SKU tidak ditemukan: %s", strings.Join(notFound, ", "))
+	}
+
+	if len(resolved) == 0 {
+		return nil, errors.New("tidak ada item valid")
+	}
+
 	order := &domain.InboundOrder{
 		ID:              uuid.New(),
 		EventID:         req.EventID,
@@ -142,16 +171,12 @@ func (u *InboundUsecase) CreateManual(ctx context.Context, req domain.CreateInbo
 		return nil, errors.New("failed to create inbound order")
 	}
 
-	for _, it := range req.Items {
-		sku, err := u.skuRepo.GetBySKUCode(ctx, it.SKUCode)
-		if err != nil {
-			continue
-		}
+	for _, r := range resolved {
 		item := &domain.InboundItem{
 			ID:             uuid.New(),
 			InboundOrderID: order.ID,
-			SKUID:          sku.ID,
-			QtyExpected:    it.QtyExpected,
+			SKUID:          r.SkuID,
+			QtyExpected:    r.QtyExpected,
 		}
 		u.repo.CreateItem(ctx, item)
 	}

@@ -282,30 +282,42 @@ function showManualPO() {
 }
 
 function renderManualPOModal() {
+  // Preserve ref & notes values if modal is already open
+  const prevRef = document.getElementById('manual-po-ref')?.value || '';
+  const prevNotes = document.getElementById('manual-po-notes')?.value || '';
+
   const itemRows = _manualPOItems.map((it, i) => `
     <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
-      <input type="text" class="form-input" placeholder="SKU Code" value="${it.sku_code}" onchange="_manualPOItems[${i}].sku_code=this.value">
-      <input type="number" class="form-input" min="1" value="${it.qty_expected}" style="text-align:center" onchange="_manualPOItems[${i}].qty_expected=parseInt(this.value)||1">
+      <input type="text" class="form-input" placeholder="SKU / Barcode" value="${it.sku_code}"
+        onchange="_manualPOItems[${i}].sku_code=this.value" id="mpo-sku-${i}">
+      <input type="number" class="form-input" min="1" value="${it.qty_expected}" style="text-align:center"
+        onchange="_manualPOItems[${i}].qty_expected=parseInt(this.value)||1">
       ${_manualPOItems.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="removeManualPOItem(${i})">✕</button>` : '<div></div>'}
     </div>`).join('');
 
   Modal.show('📋 Manual PO', `
     <div class="form-group">
       <label class="form-label">Reference Number</label>
-      <input type="text" class="form-input" id="manual-po-ref" placeholder="e.g. PO-001" value="">
+      <input type="text" class="form-input" id="manual-po-ref" placeholder="e.g. PO-001" value="${prevRef}">
     </div>
     <div class="form-group">
       <label class="form-label">Notes (optional)</label>
-      <input type="text" class="form-input" id="manual-po-notes" placeholder="e.g. Restock event">
+      <input type="text" class="form-input" id="manual-po-notes" placeholder="e.g. Restock event" value="${prevNotes}">
     </div>
     <div style="margin-bottom:0.75rem">
       <label class="form-label">Items</label>
       <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:0.5rem;margin-bottom:0.5rem;font-size:0.75rem;color:var(--text-muted)">
-        <span>SKU Code</span><span style="text-align:center">Qty</span><span></span>
+        <span>SKU / Barcode</span><span style="text-align:center">Qty</span><span></span>
       </div>
       <div id="manual-po-items">${itemRows}</div>
-      <button class="btn btn-sm btn-secondary" onclick="addManualPOItem()" style="margin-top:0.25rem">+ Add Item</button>
-    </div>`,
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+        <button class="btn btn-sm btn-secondary" onclick="addManualPOItem()" style="flex:1">+ Ketik Item</button>
+        <button class="scan-with-camera-btn" onclick="scanManualPOItem()" title="Scan pakai Kamera">
+          <span class="material-symbols-rounded">photo_camera</span> Scan
+        </button>
+      </div>
+    </div>
+    <div id="manual-po-error" style="margin-top:0.5rem"></div>`,
     `<button class="btn btn-secondary" onclick="Modal.hide()">Cancel</button>
      <button class="btn btn-primary" onclick="submitManualPO()">Create PO</button>`);
 }
@@ -313,6 +325,32 @@ function renderManualPOModal() {
 function addManualPOItem() {
   _manualPOItems.push({ sku_code: '', qty_expected: 1 });
   renderManualPOModal();
+  // Focus the new row
+  setTimeout(() => {
+    const idx = _manualPOItems.length - 1;
+    document.getElementById(`mpo-sku-${idx}`)?.focus();
+  }, 100);
+}
+
+function scanManualPOItem() {
+  CameraScanner.open((decodedText) => {
+    // Check if already exists, increment qty if so
+    const existing = _manualPOItems.find(it => it.sku_code === decodedText);
+    if (existing) {
+      existing.qty_expected++;
+      Toast.success(`${decodedText} qty +1 → ${existing.qty_expected}`);
+    } else {
+      // Replace empty row or add new
+      const emptyIdx = _manualPOItems.findIndex(it => !it.sku_code.trim());
+      if (emptyIdx >= 0) {
+        _manualPOItems[emptyIdx].sku_code = decodedText;
+      } else {
+        _manualPOItems.push({ sku_code: decodedText, qty_expected: 1 });
+      }
+      Toast.success(`Item ditambahkan: ${decodedText}`);
+    }
+    renderManualPOModal();
+  });
 }
 
 function removeManualPOItem(i) {
@@ -330,6 +368,9 @@ async function submitManualPO() {
     return;
   }
 
+  const errDiv = document.getElementById('manual-po-error');
+  errDiv.innerHTML = '';
+
   try {
     await API.post('/inbound', {
       event_id: window.currentEventId,
@@ -340,5 +381,8 @@ async function submitManualPO() {
     Modal.hide();
     Toast.success('PO berhasil dibuat!');
     Router.navigate('inbound');
-  } catch(e) { Toast.error(e.message); }
+  } catch(e) {
+    errDiv.innerHTML = `<div class="alert alert-danger"><span class="material-symbols-rounded">error</span> ${e.message}</div>`;
+    Toast.error(e.message);
+  }
 }
