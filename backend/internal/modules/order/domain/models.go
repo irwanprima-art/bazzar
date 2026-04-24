@@ -55,12 +55,13 @@ type OrderItem struct {
 }
 
 type ImportResult struct {
-	TotalRows    int      `json:"total_rows"`
-	Imported     int      `json:"imported"`
-	Skipped      int      `json:"skipped"`
-	Duplicates   int      `json:"duplicates"`
-	Errors       int      `json:"errors"`
-	ErrorDetails []string `json:"error_details,omitempty"`
+	TotalRows      int      `json:"total_rows"`
+	Imported       int      `json:"imported"`
+	Updated        int      `json:"updated"`
+	Skipped        int      `json:"skipped"`
+	Duplicates     int      `json:"duplicates"`
+	Errors         int      `json:"errors"`
+	ErrorDetails   []string `json:"error_details,omitempty"`
 	SkippedDetails []string `json:"skipped_details,omitempty"`
 }
 

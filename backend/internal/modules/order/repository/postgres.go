@@ -18,20 +18,57 @@ func NewOrderRepository(db *pgxpool.Pool) *OrderRepository {
 	return &OrderRepository{db: db}
 }
 
-func (r *OrderRepository) UpsertOrder(ctx context.Context, order *domain.Order) (bool, error) {
-	tag, err := r.db.Exec(ctx, `
-		INSERT INTO orders (id, event_id, order_number, platform_status, status,
-			buyer_name, buyer_username, shipping_option, tracking_number,
-			product_name, variation_name, notes, total_payment, imported_by, imported_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
-		ON CONFLICT (event_id, order_number) DO NOTHING
-	`, order.ID, order.EventID, order.OrderNumber, order.PlatformStatus, order.Status,
-		order.BuyerName, order.BuyerUsername, order.ShippingOption, order.TrackingNumber,
-		order.ProductName, order.VariationName, order.Notes, order.TotalPayment, order.ImportedBy)
+// UpsertOrder returns: "inserted", "updated", or "duplicate"
+func (r *OrderRepository) UpsertOrder(ctx context.Context, order *domain.Order) (string, error) {
+	// First check if order already exists
+	var existingID uuid.UUID
+	var existingPlatformStatus string
+	err := r.db.QueryRow(ctx, `
+		SELECT id, COALESCE(platform_status,'') FROM orders 
+		WHERE event_id = $1 AND order_number = $2
+	`, order.EventID, order.OrderNumber).Scan(&existingID, &existingPlatformStatus)
+
 	if err != nil {
-		return false, err
+		// No existing order → insert
+		_, err := r.db.Exec(ctx, `
+			INSERT INTO orders (id, event_id, order_number, platform_status, status,
+				buyer_name, buyer_username, shipping_option, tracking_number,
+				product_name, variation_name, notes, total_payment, imported_by, imported_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+		`, order.ID, order.EventID, order.OrderNumber, order.PlatformStatus, order.Status,
+			order.BuyerName, order.BuyerUsername, order.ShippingOption, order.TrackingNumber,
+			order.ProductName, order.VariationName, order.Notes, order.TotalPayment, order.ImportedBy)
+		if err != nil {
+			return "", err
+		}
+		return "inserted", nil
 	}
-	return tag.RowsAffected() > 0, nil
+
+	// Existing order found — only allow update if platform_status was "Belum Bayar"
+	if existingPlatformStatus != "Belum Bayar" {
+		return "duplicate", nil
+	}
+
+	// Update existing "Belum Bayar" order with new data
+	order.ID = existingID // preserve original ID
+	_, err = r.db.Exec(ctx, `
+		UPDATE orders SET platform_status=$1, status=$2,
+			buyer_name=$3, buyer_username=$4, shipping_option=$5, tracking_number=$6,
+			product_name=$7, variation_name=$8, notes=$9, total_payment=$10,
+			imported_by=$11, updated_at=NOW()
+		WHERE id=$12
+	`, order.PlatformStatus, order.Status,
+		order.BuyerName, order.BuyerUsername, order.ShippingOption, order.TrackingNumber,
+		order.ProductName, order.VariationName, order.Notes, order.TotalPayment,
+		order.ImportedBy, existingID)
+	if err != nil {
+		return "", err
+	}
+
+	// Delete old items so they can be re-inserted
+	r.db.Exec(ctx, `DELETE FROM order_items WHERE order_id = $1`, existingID)
+
+	return "updated", nil
 }
 
 func (r *OrderRepository) UpsertOrderItem(ctx context.Context, item *domain.OrderItem) error {

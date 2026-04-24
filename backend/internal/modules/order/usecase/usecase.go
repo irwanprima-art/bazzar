@@ -124,14 +124,14 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 			ImportedBy:     &userID,
 		}
 
-		inserted, err := u.repo.UpsertOrder(ctx, order)
+		upsertResult, err := u.repo.UpsertOrder(ctx, order)
 		if err != nil {
 			result.Errors++
 			result.ErrorDetails = append(result.ErrorDetails, fmt.Sprintf("Row %d: %s - %v", rowNum, orderNum, err))
 			continue
 		}
 
-		if !inserted {
+		if upsertResult == "duplicate" {
 			result.Duplicates++
 			continue
 		}
@@ -162,7 +162,11 @@ func (u *OrderUsecase) ImportFromExcel(ctx context.Context, reader io.Reader, ev
 			u.allocateOrder(ctx, order, item, eventID)
 		}
 
-		result.Imported++
+		if upsertResult == "updated" {
+			result.Updated++
+		} else {
+			result.Imported++
+		}
 	}
 
 	return result, nil
